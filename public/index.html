@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Slither Arena</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #0a0a1a;
+    overflow: hidden;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    cursor: none;
+  }
+  canvas { display: block; }
+
+  /* ── Menu overlay ──────────────────────────────── */
+  #menu {
+    position: fixed; inset: 0;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    background: radial-gradient(ellipse at center, rgba(10,10,30,0.92) 0%, rgba(5,5,15,0.98) 100%);
+    z-index: 100;
+    gap: 18px;
+    transition: opacity 0.3s;
+  }
+  #menu.hidden { display: none; }
+  #menu h1 {
+    font-size: 52px;
+    font-weight: 900;
+    background: linear-gradient(135deg, #ff6b81, #ffa502, #2ed573, #1e90ff, #a55eea);
+    background-size: 300% 300%;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    animation: gradShift 4s ease infinite;
+    text-shadow: none;
+    letter-spacing: -1px;
+  }
+  @keyframes gradShift {
+    0%, 100% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+  }
+  #menu p.sub { color: #8888aa; font-size: 14px; margin-top: -10px; }
+  #nameInput {
+    padding: 14px 24px;
+    font-size: 20px;
+    border: 2px solid #333;
+    border-radius: 30px;
+    background: #14142a;
+    color: #fff;
+    text-align: center;
+    width: 280px;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+  #nameInput:focus { border-color: #5352ed; }
+  #playBtn {
+    padding: 14px 48px;
+    font-size: 20px;
+    font-weight: 700;
+    border: none;
+    border-radius: 30px;
+    background: linear-gradient(135deg, #5352ed, #1e90ff);
+    color: #fff;
+    cursor: pointer;
+    transition: transform 0.15s, box-shadow 0.15s;
+    letter-spacing: 0.5px;
+  }
+  #playBtn:hover { transform: scale(1.05); box-shadow: 0 4px 20px rgba(83,82,237,0.5); }
+  #controls-hint {
+    color: #555; font-size: 12px; margin-top: 6px;
+  }
+
+  /* ── HUD ───────────────────────────────────────── */
+  #hud {
+    position: fixed; top: 0; left: 0; right: 0;
+    pointer-events: none; z-index: 50;
+  }
+  #scoreboard {
+    position: fixed; top: 12px; right: 12px;
+    background: rgba(10,10,30,0.75);
+    border: 1px solid #222;
+    border-radius: 10px;
+    padding: 10px 16px;
+    color: #ccc;
+    font-size: 13px;
+    min-width: 160px;
+    backdrop-filter: blur(6px);
+  }
+  #scoreboard h3 {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    color: #666;
+    margin-bottom: 6px;
+  }
+  .lb-row { display: flex; justify-content: space-between; padding: 2px 0; }
+  .lb-row.me { color: #ffa502; font-weight: 700; }
+  #myScore {
+    position: fixed; top: 12px; left: 50%;
+    transform: translateX(-50%);
+    color: #fff;
+    font-size: 22px;
+    font-weight: 700;
+    text-shadow: 0 2px 8px rgba(0,0,0,0.6);
+  }
+  #playerCount {
+    position: fixed; bottom: 12px; left: 12px;
+    color: #555; font-size: 12px;
+  }
+  #minimap {
+    position: fixed; bottom: 12px; right: 12px;
+    width: 140px; height: 140px;
+    background: rgba(10,10,30,0.6);
+    border: 1px solid #222;
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  #minimapCanvas { width: 100%; height: 100%; }
+
+  /* ── Death screen ──────────────────────────────── */
+  #deathScreen {
+    position: fixed; inset: 0;
+    display: none; flex-direction: column;
+    align-items: center; justify-content: center;
+    background: rgba(10,5,15,0.85);
+    z-index: 90; gap: 12px;
+  }
+  #deathScreen.show { display: flex; }
+  #deathScreen h2 { color: #ff4757; font-size: 36px; }
+  #deathScreen p { color: #aaa; font-size: 16px; }
+  #deathScreen .final-score { color: #ffa502; font-size: 48px; font-weight: 900; }
+  #respawnBtn {
+    padding: 12px 40px; font-size: 18px; font-weight: 700;
+    border: none; border-radius: 30px;
+    background: linear-gradient(135deg, #ff4757, #ff6b81);
+    color: #fff; cursor: pointer; margin-top: 10px;
+    transition: transform 0.15s;
+  }
+  #respawnBtn:hover { transform: scale(1.05); }
+</style>
+</head>
+<body>
+
+<!-- Menu -->
+<div id="menu">
+  <h1>SLITHER ARENA</h1>
+  <p class="sub">Multiplayer Snake Game</p>
+  <input id="nameInput" type="text" placeholder="Your name" maxlength="16" autocomplete="off" />
+  <button id="playBtn">PLAY</button>
+  <p id="controls-hint">Mouse to steer &bull; Click or Space to boost</p>
+</div>
+
+<!-- Death screen -->
+<div id="deathScreen">
+  <h2>YOU DIED</h2>
+  <p id="deathMsg"></p>
+  <div class="final-score" id="finalScore">0</div>
+  <button id="respawnBtn">PLAY AGAIN</button>
+</div>
+
+<!-- Game canvas -->
+<canvas id="game"></canvas>
+
+<!-- HUD -->
+<div id="hud">
+  <div id="myScore">0</div>
+  <div id="scoreboard">
+    <h3>Leaderboard</h3>
+    <div id="lbBody"></div>
+  </div>
+  <div id="playerCount"></div>
+  <div id="minimap"><canvas id="minimapCanvas" width="140" height="140"></canvas></div>
+</div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script>
+(() => {
+  // ── Elements ──────────────────────────────────────────────
+  const canvas  = document.getElementById('game');
+  const ctx     = canvas.getContext('2d');
+  const mmCanvas = document.getElementById('minimapCanvas');
+  const mmCtx    = mmCanvas.getContext('2d');
+  const menu    = document.getElementById('menu');
+  const nameInput = document.getElementById('nameInput');
+  const playBtn = document.getElementById('playBtn');
+  const deathScreen = document.getElementById('deathScreen');
+  const deathMsg = document.getElementById('deathMsg');
+  const finalScoreEl = document.getElementById('finalScore');
+  const respawnBtn = document.getElementById('respawnBtn');
+  const myScoreEl = document.getElementById('myScore');
+  const lbBody  = document.getElementById('lbBody');
+  const playerCountEl = document.getElementById('playerCount');
+
+  // ── State ─────────────────────────────────────────────────
+  let socket = null;
+  let myId = null;
+  let worldW = 4000, worldH = 4000;
+  let state = { players: {}, food: [], leaderboard: [] };
+  let camera = { x: 0, y: 0 };
+  let mouseAngle = 0;
+  let boosting = false;
+  let playing = false;
+  let lastScore = 0;
+
+  // ── Resize ────────────────────────────────────────────────
+  function resize() {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+  }
+  window.addEventListener('resize', resize);
+  resize();
+
+  // ── Connect ───────────────────────────────────────────────
+  function connect() {
+    socket = io();
+
+    socket.on('joined', (data) => {
+      myId = data.id;
+      worldW = data.worldW;
+      worldH = data.worldH;
+      menu.classList.add('hidden');
+      deathScreen.classList.remove('show');
+      playing = true;
+    });
+
+    socket.on('state', (s) => {
+      state = s;
+      if (s.worldW) worldW = s.worldW;
+      if (s.worldH) worldH = s.worldH;
+    });
+
+    socket.on('dead', (data) => {
+      playing = false;
+      deathMsg.textContent = data.killer ? `Killed by ${data.killer}` : 'You died!';
+      finalScoreEl.textContent = lastScore;
+      deathScreen.classList.add('show');
+    });
+
+    socket.on('full', () => {
+      alert('Server is full! Try again later.');
+    });
+  }
+
+  // ── Menu actions ──────────────────────────────────────────
+  playBtn.addEventListener('click', startGame);
+  nameInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') startGame(); });
+  respawnBtn.addEventListener('click', () => {
+    socket.emit('respawn', { name: nameInput.value || 'Player' });
+  });
+
+  function startGame() {
+    if (!socket) connect();
+    socket.emit('join', { name: nameInput.value || 'Player' });
+  }
+
+  // ── Input ─────────────────────────────────────────────────
+  window.addEventListener('mousemove', (e) => {
+    const cx = canvas.width / 2;
+    const cy = canvas.height / 2;
+    mouseAngle = Math.atan2(e.clientY - cy, e.clientX - cx);
+  });
+  window.addEventListener('mousedown', () => { boosting = true; });
+  window.addEventListener('mouseup', () => { boosting = false; });
+  window.addEventListener('keydown', (e) => { if (e.code === 'Space') { boosting = true; e.preventDefault(); } });
+  window.addEventListener('keyup', (e) => { if (e.code === 'Space') boosting = false; });
+
+  // send input to server
+  setInterval(() => {
+    if (socket && playing) {
+      socket.emit('input', { angle: mouseAngle, boosting });
+    }
+  }, 1000 / 30);
+
+  // ── Drawing helpers ───────────────────────────────────────
+  function worldToScreen(wx, wy) {
+    return { x: wx - camera.x + canvas.width / 2, y: wy - camera.y + canvas.height / 2 };
+  }
+
+  function drawGrid() {
+    const gridSize = 60;
+    ctx.strokeStyle = 'rgba(255,255,255,0.03)';
+    ctx.lineWidth = 1;
+    const sx = -(camera.x % gridSize);
+    const sy = -(camera.y % gridSize);
+    for (let x = sx; x < canvas.width; x += gridSize) {
+      ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height); ctx.stroke();
+    }
+    for (let y = sy; y < canvas.height; y += gridSize) {
+      ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke();
+    }
+  }
+
+  function drawBorder() {
+    ctx.strokeStyle = 'rgba(255,50,50,0.4)';
+    ctx.lineWidth = 4;
+    const tl = worldToScreen(0, 0);
+    const br = worldToScreen(worldW, worldH);
+    ctx.strokeRect(tl.x, tl.y, br.x - tl.x, br.y - tl.y);
+  }
+
+  function drawFood() {
+    for (const f of state.food) {
+      const p = worldToScreen(f.x, f.y);
+      if (p.x < -20 || p.x > canvas.width + 20 || p.y < -20 || p.y > canvas.height + 20) continue;
+      const r = f.value > 1 ? 6 : 4;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
+      ctx.fillStyle = f.color;
+      ctx.fill();
+      // glow
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, r + 3, 0, Math.PI * 2);
+      ctx.fillStyle = f.color.replace(')', ',0.15)').replace('rgb', 'rgba');
+      ctx.fill();
+    }
+  }
+
+  function drawSnake(p, isMe) {
+    const segments = p.segments;
+    if (!segments || segments.length < 2) return;
+    const radius = 10 + Math.sqrt(p.score) * 1.2;
+
+    // Body
+    for (let i = segments.length - 1; i >= 0; i--) {
+      const s = worldToScreen(segments[i].x, segments[i].y);
+      if (s.x < -radius * 2 || s.x > canvas.width + radius * 2 ||
+          s.y < -radius * 2 || s.y > canvas.height + radius * 2) continue;
+      const t = 1 - i / segments.length;
+      const r = radius * (0.5 + t * 0.5);
+      const light = 50 + t * 15;
+      const sat = p.boosting ? 100 : 75;
+
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, r, 0, Math.PI * 2);
+      ctx.fillStyle = `hsl(${p.hue}, ${sat}%, ${light}%)`;
+      ctx.fill();
+
+      // stripe
+      if (i % 6 < 3) {
+        ctx.beginPath();
+        ctx.arc(s.x, s.y, r * 0.7, 0, Math.PI * 2);
+        ctx.fillStyle = `hsl(${(p.hue + 30) % 360}, ${sat}%, ${light + 10}%)`;
+        ctx.fill();
+      }
+    }
+
+    // Eyes on head
+    const head = worldToScreen(segments[0].x, segments[0].y);
+    const angle = segments.length > 1
+      ? Math.atan2(segments[0].y - segments[1].y, segments[0].x - segments[1].x)
+      : 0;
+    const eyeOffset = radius * 0.4;
+    for (const side of [-1, 1]) {
+      const ex = head.x + Math.cos(angle + side * 0.5) * eyeOffset;
+      const ey = head.y + Math.sin(angle + side * 0.5) * eyeOffset;
+      ctx.beginPath();
+      ctx.arc(ex, ey, radius * 0.25, 0, Math.PI * 2);
+      ctx.fillStyle = '#fff';
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(ex + Math.cos(angle) * radius * 0.08, ey + Math.sin(angle) * radius * 0.08, radius * 0.13, 0, Math.PI * 2);
+      ctx.fillStyle = '#111';
+      ctx.fill();
+    }
+
+    // Name tag
+    const nameY = head.y - radius - 14;
+    ctx.font = '600 13px "Segoe UI", sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = isMe ? '#ffa502' : 'rgba(255,255,255,0.7)';
+    ctx.fillText(p.name, head.x, nameY);
+  }
+
+  function drawMinimap() {
+    mmCtx.clearRect(0, 0, 140, 140);
+    mmCtx.fillStyle = 'rgba(10,10,30,0.4)';
+    mmCtx.fillRect(0, 0, 140, 140);
+
+    // border
+    mmCtx.strokeStyle = 'rgba(255,50,50,0.3)';
+    mmCtx.strokeRect(0, 0, 140, 140);
+
+    // food dots
+    mmCtx.fillStyle = 'rgba(255,255,255,0.15)';
+    for (let i = 0; i < state.food.length; i += 5) {
+      const f = state.food[i];
+      mmCtx.fillRect(f.x / worldW * 140, f.y / worldH * 140, 1, 1);
+    }
+
+    // players
+    for (const p of Object.values(state.players)) {
+      const mx = p.segments[0].x / worldW * 140;
+      const my = p.segments[0].y / worldH * 140;
+      mmCtx.beginPath();
+      mmCtx.arc(mx, my, p.id === myId ? 3 : 2, 0, Math.PI * 2);
+      mmCtx.fillStyle = p.id === myId ? '#ffa502' : `hsl(${p.hue}, 70%, 60%)`;
+      mmCtx.fill();
+    }
+  }
+
+  function updateHUD() {
+    const me = state.players[myId];
+    if (me) {
+      lastScore = me.score;
+      myScoreEl.textContent = `Score: ${me.score}`;
+    }
+
+    // leaderboard
+    let html = '';
+    (state.leaderboard || []).forEach((entry, i) => {
+      const isMe = me && entry.name === me.name && entry.score === me.score;
+      html += `<div class="lb-row${isMe ? ' me' : ''}">`
+            + `<span>${i + 1}. ${entry.name}</span><span>${entry.score}</span></div>`;
+    });
+    lbBody.innerHTML = html;
+
+    // player count
+    const count = Object.keys(state.players).length;
+    playerCountEl.textContent = `${count} player${count !== 1 ? 's' : ''} online`;
+  }
+
+  // ── Cursor ────────────────────────────────────────────────
+  function drawCursor(e) {
+    // Custom cursor
+    ctx.beginPath();
+    ctx.arc(canvas.width / 2 + Math.cos(mouseAngle) * 60,
+            canvas.height / 2 + Math.sin(mouseAngle) * 60,
+            5, 0, Math.PI * 2);
+    ctx.strokeStyle = 'rgba(255,255,255,0.25)';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+  }
+
+  // ── Main render loop ─────────────────────────────────────
+  function render() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // Background
+    ctx.fillStyle = '#0a0a1a';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // Camera follow
+    const me = state.players[myId];
+    if (me && me.segments && me.segments.length > 0) {
+      camera.x += (me.segments[0].x - camera.x) * 0.12;
+      camera.y += (me.segments[0].y - camera.y) * 0.12;
+    }
+
+    drawGrid();
+    drawBorder();
+    drawFood();
+
+    // Draw other snakes first, then me on top
+    for (const p of Object.values(state.players)) {
+      if (p.id !== myId) drawSnake(p, false);
+    }
+    if (state.players[myId]) drawSnake(state.players[myId], true);
+
+    drawCursor();
+    drawMinimap();
+    updateHUD();
+
+    requestAnimationFrame(render);
+  }
+  render();
+
+  // Focus name input
+  nameInput.focus();
+})();
+</script>
+</body>
+</html>
