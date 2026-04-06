@@ -176,7 +176,7 @@
   <p class="sub">Multiplayer Snake Game</p>
   <input id="nameInput" type="text" placeholder="Your name" maxlength="16" autocomplete="off" />
   <button id="playBtn">PLAY</button>
-  <p id="controls-hint">Mouse to steer &bull; Click or Space to boost</p>
+  <p id="controls-hint">Mouse or Arrow Keys to steer &bull; Click / Space / W to boost</p>
 </div>
 
 <!-- Death screen -->
@@ -320,21 +320,72 @@
   function startGame() {
     if (!socket) connect();
     socket.emit('join', { name: nameInput.value || 'Player' });
+    requestPointerLock();
   }
 
   // ── Input ─────────────────────────────────────────────────
-  window.addEventListener('mousemove', (e) => {
-    const cx = canvas.width / 2;
-    const cy = canvas.height / 2;
-    mouseAngle = Math.atan2(e.clientY - cy, e.clientX - cx);
+  const TURN_SPEED = 0.07;  // radians per frame for keyboard
+  let keysDown = {};
+  let usingKeyboard = false;
+  let pointerLocked = false;
+
+  // Pointer lock — traps mouse inside the game
+  function requestPointerLock() {
+    if (!pointerLocked) canvas.requestPointerLock();
+  }
+  document.addEventListener('pointerlockchange', () => {
+    pointerLocked = document.pointerLockElement === canvas;
   });
-  window.addEventListener('mousedown', () => { boosting = true; });
+
+  // Mouse: use movement delta (works with pointer lock)
+  window.addEventListener('mousemove', (e) => {
+    if (!playing && !spectating) return;
+    usingKeyboard = false;
+    if (pointerLocked) {
+      // pointer lock gives movementX/Y — rotate based on horizontal movement
+      mouseAngle += e.movementX * 0.003;
+    } else {
+      const cx = canvas.width / 2;
+      const cy = canvas.height / 2;
+      mouseAngle = Math.atan2(e.clientY - cy, e.clientX - cx);
+    }
+  });
+
+  // Mouse click: boost + request pointer lock
+  canvas.addEventListener('mousedown', () => {
+    if (playing) {
+      boosting = true;
+      requestPointerLock();
+    }
+  });
   window.addEventListener('mouseup', () => { boosting = false; });
-  window.addEventListener('keydown', (e) => { if (e.code === 'Space') { boosting = true; e.preventDefault(); } });
-  window.addEventListener('keyup', (e) => { if (e.code === 'Space') boosting = false; });
+
+  // Keyboard
+  window.addEventListener('keydown', (e) => {
+    keysDown[e.code] = true;
+    if (e.code === 'Space') { boosting = true; e.preventDefault(); }
+    if (e.code === 'ArrowLeft' || e.code === 'ArrowRight' ||
+        e.code === 'KeyA' || e.code === 'KeyD') {
+      usingKeyboard = true;
+      e.preventDefault();
+    }
+    // Press Escape exits pointer lock automatically (browser handles this)
+  });
+  window.addEventListener('keyup', (e) => {
+    keysDown[e.code] = false;
+    if (e.code === 'Space') boosting = false;
+  });
 
   // send input to server
   setInterval(() => {
+    // Keyboard turning (arrow keys or A/D)
+    if (usingKeyboard) {
+      if (keysDown['ArrowLeft'] || keysDown['KeyA']) mouseAngle -= TURN_SPEED;
+      if (keysDown['ArrowRight'] || keysDown['KeyD']) mouseAngle += TURN_SPEED;
+    }
+    // Also support up arrow / W for boost
+    if (keysDown['ArrowUp'] || keysDown['KeyW']) boosting = true;
+
     if (socket && playing) {
       socket.emit('input', { angle: mouseAngle, boosting });
     }
