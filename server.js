@@ -18,13 +18,14 @@ const WORLD_W = 4000;
 const WORLD_H = 4000;
 const TICK_RATE = 20;           // server ticks per second
 const MAX_FOOD = 600;
-const FOOD_VALUE = 1;
-const BASE_SPEED = 8;
-const BOOST_SPEED = 16;
+const FOOD_VALUE = 4;
+const BASE_SPEED = 12;
+const BOOST_SPEED = 24;
 const BOOST_DRAIN = 0.4;       // score lost per tick while boosting
 const SEGMENT_SPACING = 12;
 const START_LENGTH = 10;
 const MAX_PLAYERS = 20;
+const MAX_LIVES = 2;
 
 // ── State ───────────────────────────────────────────────────
 const players = {};   // id -> player object
@@ -92,7 +93,9 @@ function createPlayer(id, name) {
     score: START_LENGTH,
     hue,
     boosting: false,
-    alive: true
+    alive: true,
+    lives: MAX_LIVES,
+    spectating: false
   };
 }
 
@@ -178,10 +181,16 @@ function tick() {
     const killer = checkHeadToBody(p);
     if (killer) {
       p.alive = false;
+      p.lives -= 1;
       killer.score += Math.floor(p.score * 0.3);
       const orbs = spawnOrbs(p.segments, p.score);
       food.push(...orbs);
-      io.to(p.id).emit('dead', { killer: killer.name });
+      if (p.lives <= 0) {
+        p.spectating = true;
+        io.to(p.id).emit('dead', { killer: killer.name, livesLeft: 0, eliminated: true });
+      } else {
+        io.to(p.id).emit('dead', { killer: killer.name, livesLeft: p.lives, eliminated: false });
+      }
     }
   }
 
@@ -202,7 +211,8 @@ function tick() {
       segments: p.segments,
       score: Math.floor(p.score),
       hue: p.hue,
-      boosting: p.boosting
+      boosting: p.boosting,
+      lives: p.lives
     };
   }
 
@@ -241,8 +251,15 @@ io.on('connection', (socket) => {
   });
 
   socket.on('respawn', (data) => {
+    const old = players[socket.id];
+    if (old && old.spectating) {
+      socket.emit('eliminated');
+      return;
+    }
+    const livesLeft = old ? old.lives : MAX_LIVES;
     const name = (data.name || 'Player').slice(0, 16);
     players[socket.id] = createPlayer(socket.id, name);
+    players[socket.id].lives = livesLeft;
     socket.emit('joined', { id: socket.id, worldW: WORLD_W, worldH: WORLD_H });
   });
 

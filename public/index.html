@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Activy's Slither IO</title>
+<title>Activy's Slither.IO</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body {
@@ -130,6 +130,7 @@
   #deathScreen h2 { color: #ff4757; font-size: 36px; }
   #deathScreen p { color: #aaa; font-size: 16px; }
   #deathScreen .final-score { color: #ffa502; font-size: 48px; font-weight: 900; }
+  #livesInfo { color: #ff6b81; font-size: 18px; font-weight: 600; }
   #respawnBtn {
     padding: 12px 40px; font-size: 18px; font-weight: 700;
     border: none; border-radius: 30px;
@@ -138,13 +139,40 @@
     transition: transform 0.15s;
   }
   #respawnBtn:hover { transform: scale(1.05); }
+  #respawnBtn.hidden { display: none; }
+
+  /* ── Spectator banner ─────────────────────────── */
+  #spectatorBanner {
+    position: fixed; top: 50px; left: 50%;
+    transform: translateX(-50%);
+    background: rgba(255,70,87,0.15);
+    border: 1px solid rgba(255,70,87,0.3);
+    border-radius: 8px;
+    padding: 8px 20px;
+    color: #ff6b81;
+    font-size: 14px;
+    font-weight: 600;
+    z-index: 60;
+    display: none;
+    backdrop-filter: blur(6px);
+  }
+  #spectatorBanner.show { display: block; }
+
+  /* ── Lives HUD ────────────────────────────────── */
+  #livesHud {
+    position: fixed; top: 40px; left: 50%;
+    transform: translateX(-50%);
+    color: #ff6b81;
+    font-size: 14px;
+    font-weight: 600;
+  }
 </style>
 </head>
 <body>
 
 <!-- Menu -->
 <div id="menu">
-  <h1>ACTIVY'S SLITHER IO</h1>
+  <h1>ACTIVY'S SLITHER.IO</h1>
   <p class="sub">Multiplayer Snake Game</p>
   <input id="nameInput" type="text" placeholder="Your name" maxlength="16" autocomplete="off" />
   <button id="playBtn">PLAY</button>
@@ -153,11 +181,15 @@
 
 <!-- Death screen -->
 <div id="deathScreen">
-  <h2>YOU DIED</h2>
+  <h2 id="deathTitle">YOU DIED</h2>
   <p id="deathMsg"></p>
   <div class="final-score" id="finalScore">0</div>
+  <p id="livesInfo"></p>
   <button id="respawnBtn">PLAY AGAIN</button>
 </div>
+
+<!-- Spectator banner -->
+<div id="spectatorBanner">SPECTATING — You have been eliminated</div>
 
 <!-- Game canvas -->
 <canvas id="game"></canvas>
@@ -165,6 +197,7 @@
 <!-- HUD -->
 <div id="hud">
   <div id="myScore">0</div>
+  <div id="livesHud"></div>
   <div id="scoreboard">
     <h3>Leaderboard</h3>
     <div id="lbBody"></div>
@@ -185,12 +218,16 @@
   const nameInput = document.getElementById('nameInput');
   const playBtn = document.getElementById('playBtn');
   const deathScreen = document.getElementById('deathScreen');
+  const deathTitle = document.getElementById('deathTitle');
   const deathMsg = document.getElementById('deathMsg');
   const finalScoreEl = document.getElementById('finalScore');
+  const livesInfo = document.getElementById('livesInfo');
   const respawnBtn = document.getElementById('respawnBtn');
   const myScoreEl = document.getElementById('myScore');
+  const livesHud = document.getElementById('livesHud');
   const lbBody  = document.getElementById('lbBody');
   const playerCountEl = document.getElementById('playerCount');
+  const spectatorBanner = document.getElementById('spectatorBanner');
 
   // ── State ─────────────────────────────────────────────────
   let socket = null;
@@ -202,6 +239,9 @@
   let boosting = false;
   let playing = false;
   let lastScore = 0;
+  let spectating = false;
+  let myLives = 2;
+  let spectateTarget = null;
 
   // ── Resize ────────────────────────────────────────────────
   function resize() {
@@ -234,7 +274,35 @@
       playing = false;
       deathMsg.textContent = data.killer ? `Killed by ${data.killer}` : 'You died!';
       finalScoreEl.textContent = lastScore;
-      deathScreen.classList.add('show');
+
+      if (data.eliminated) {
+        // No more lives — spectator mode
+        myLives = 0;
+        deathTitle.textContent = 'ELIMINATED';
+        livesInfo.textContent = 'No lives remaining';
+        respawnBtn.classList.add('hidden');
+        deathScreen.classList.add('show');
+        setTimeout(() => {
+          deathScreen.classList.remove('show');
+          spectating = true;
+          spectatorBanner.classList.add('show');
+          livesHud.textContent = '';
+        }, 3000);
+      } else {
+        // Still have lives left
+        myLives = data.livesLeft;
+        deathTitle.textContent = 'YOU DIED';
+        livesInfo.textContent = `${data.livesLeft} life remaining`;
+        respawnBtn.classList.remove('hidden');
+        deathScreen.classList.add('show');
+      }
+    });
+
+    socket.on('eliminated', () => {
+      // Tried to respawn but already out of lives
+      spectating = true;
+      spectatorBanner.classList.add('show');
+      deathScreen.classList.remove('show');
     });
 
     socket.on('full', () => {
@@ -404,6 +472,10 @@
     if (me) {
       lastScore = me.score;
       myScoreEl.textContent = `Score: ${me.score}`;
+      livesHud.textContent = `Lives: ${'♥'.repeat(me.lives || 0)}${'♡'.repeat(2 - (me.lives || 0))}`;
+    } else if (spectating) {
+      myScoreEl.textContent = '';
+      livesHud.textContent = '';
     }
 
     // leaderboard
@@ -440,11 +512,22 @@
     ctx.fillStyle = '#0a0a1a';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    // Camera follow
-    const me = state.players[myId];
-    if (me && me.segments && me.segments.length > 0) {
-      camera.x += (me.segments[0].x - camera.x) * 0.12;
-      camera.y += (me.segments[0].y - camera.y) * 0.12;
+    // Camera follow — own snake or leader when spectating
+    let camTarget = state.players[myId];
+    if (!camTarget && spectating) {
+      // follow the #1 player
+      const ids = Object.keys(state.players);
+      if (ids.length > 0) {
+        let best = state.players[ids[0]];
+        for (const id of ids) {
+          if (state.players[id].score > best.score) best = state.players[id];
+        }
+        camTarget = best;
+      }
+    }
+    if (camTarget && camTarget.segments && camTarget.segments.length > 0) {
+      camera.x += (camTarget.segments[0].x - camera.x) * 0.12;
+      camera.y += (camTarget.segments[0].y - camera.y) * 0.12;
     }
 
     drawGrid();
