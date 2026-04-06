@@ -324,7 +324,7 @@
   }
 
   // ── Input ─────────────────────────────────────────────────
-  const TURN_SPEED = 0.07;  // radians per frame for keyboard
+  const TURN_SPEED = 0.14;  // radians per frame for keyboard (doubled)
   let keysDown = {};
   let usingKeyboard = false;
   let pointerLocked = false;
@@ -337,18 +337,26 @@
     pointerLocked = document.pointerLockElement === canvas;
   });
 
-  // Mouse: use movement delta (works with pointer lock)
+  // Mouse: smooth tracking toward cursor position
+  let targetMouseAngle = 0;
   window.addEventListener('mousemove', (e) => {
     if (!playing && !spectating) return;
     usingKeyboard = false;
     if (pointerLocked) {
-      // pointer lock gives movementX/Y — rotate based on horizontal movement
-      mouseAngle += e.movementX * 0.003;
+      // pointer lock: use both X and Y movement for natural aiming
+      targetMouseAngle += e.movementX * 0.005;
+      // also factor in vertical movement so diagonal feels right
+      targetMouseAngle += e.movementY * 0.002;
     } else {
       const cx = canvas.width / 2;
       const cy = canvas.height / 2;
-      mouseAngle = Math.atan2(e.clientY - cy, e.clientX - cx);
+      targetMouseAngle = Math.atan2(e.clientY - cy, e.clientX - cx);
     }
+    // smooth interpolation toward target
+    let diff = targetMouseAngle - mouseAngle;
+    while (diff > Math.PI) diff -= Math.PI * 2;
+    while (diff < -Math.PI) diff += Math.PI * 2;
+    mouseAngle += diff * 0.35;
   });
 
   // Mouse click: boost + request pointer lock
