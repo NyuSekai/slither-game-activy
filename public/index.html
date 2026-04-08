@@ -10,7 +10,7 @@
     background: #0a0a1a;
     overflow: hidden;
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-    cursor: none;
+    cursor: default;
   }
   canvas { display: block; }
 
@@ -439,49 +439,11 @@
   function startGame() {
     if (!socket) connect();
     socket.emit('join', { name: nameInput.value || 'Player' });
-    requestPointerLock();
   }
 
-  // ── Input ─────────────────────────────────────────────────
-  const TURN_SPEED = 0.14;  // radians per frame for keyboard (doubled)
+  // ── Input (classic slither.io style) ──────────────────────
+  const TURN_SPEED = 0.14;
   let keysDown = {};
-  let usingKeyboard = false;
-  let pointerLocked = false;
-
-  // Pointer lock — traps mouse inside the game
-  function requestPointerLock() {
-    if (!pointerLocked) canvas.requestPointerLock();
-  }
-  document.addEventListener('pointerlockchange', () => {
-    pointerLocked = document.pointerLockElement === canvas;
-  });
-
-  // Mouse: smooth tracking toward cursor position
-  let targetMouseAngle = 0;
-  window.addEventListener('mousemove', (e) => {
-    if (!playing && !spectating) return;
-    usingKeyboard = false;
-    if (pointerLocked) {
-      // pointer lock: use both X and Y movement for natural aiming
-      targetMouseAngle += e.movementX * 0.005;
-      // also factor in vertical movement so diagonal feels right
-      targetMouseAngle += e.movementY * 0.002;
-    } else {
-      const cx = canvas.width / 2;
-      const cy = canvas.height / 2;
-      targetMouseAngle = Math.atan2(e.clientY - cy, e.clientX - cx);
-    }
-    // smooth interpolation toward target
-    let diff = targetMouseAngle - mouseAngle;
-    while (diff > Math.PI) diff -= Math.PI * 2;
-    while (diff < -Math.PI) diff += Math.PI * 2;
-    mouseAngle += diff * 0.35;
-  });
-
-  // Mouse click: only used to request pointer lock (no boost)
-  canvas.addEventListener('mousedown', () => {
-    if (playing) requestPointerLock();
-  });
 
   // Helper: check if user is typing in a text input
   function isTyping() {
@@ -489,17 +451,22 @@
     return el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA');
   }
 
+  // Mouse: cursor is always visible, snake aims toward it
+  // This is exactly how slither.io works
+  window.addEventListener('mousemove', (e) => {
+    const cx = canvas.width / 2;
+    const cy = canvas.height / 2;
+    mouseAngle = Math.atan2(e.clientY - cy, e.clientX - cx);
+  });
+
   // Keyboard
   window.addEventListener('keydown', (e) => {
-    // Don't capture keys when typing a name
     if (isTyping()) return;
-
     keysDown[e.code] = true;
-    // Boost: spacebar ONLY
     if (e.code === 'Space') { boosting = true; e.preventDefault(); }
     if (e.code === 'ArrowLeft' || e.code === 'ArrowRight' ||
+        e.code === 'ArrowUp' || e.code === 'ArrowDown' ||
         e.code === 'KeyA' || e.code === 'KeyD') {
-      usingKeyboard = true;
       e.preventDefault();
     }
   });
@@ -511,11 +478,9 @@
 
   // send input to server
   setInterval(() => {
-    // Keyboard turning (arrow keys or A/D)
-    if (usingKeyboard) {
-      if (keysDown['ArrowLeft'] || keysDown['KeyA']) mouseAngle -= TURN_SPEED;
-      if (keysDown['ArrowRight'] || keysDown['KeyD']) mouseAngle += TURN_SPEED;
-    }
+    // Keyboard turning overrides mouse when arrow keys are held
+    if (keysDown['ArrowLeft'] || keysDown['KeyA']) mouseAngle -= TURN_SPEED;
+    if (keysDown['ArrowRight'] || keysDown['KeyD']) mouseAngle += TURN_SPEED;
 
     if (socket && playing) {
       socket.emit('input', { angle: mouseAngle, boosting });
@@ -527,41 +492,68 @@
     return { x: wx - camera.x + canvas.width / 2, y: wy - camera.y + canvas.height / 2 };
   }
 
+  // ── Pre-computed values for performance ────────────────────
+  const PI2 = Math.PI * 2;
+  const halfW = () => canvas.width / 2;
+  const halfH = () => canvas.height / 2;
+
+  // Cache HSL color strings to avoid generating them every frame
+  const colorCache = {};
+  function hsl(h, s, l) {
+    const key = (h | 0) * 10000 + (s | 0) * 100 + (l | 0);
+    if (!colorCache[key]) colorCache[key] = `hsl(${h},${s}%,${l}%)`;
+    return colorCache[key];
+  }
+
   function drawGrid() {
     const gridSize = 60;
+    const camX = camera.x, camY = camera.y;
+    const w = canvas.width, h = canvas.height;
     ctx.strokeStyle = 'rgba(255,255,255,0.03)';
     ctx.lineWidth = 1;
-    const sx = -(camera.x % gridSize);
-    const sy = -(camera.y % gridSize);
-    for (let x = sx; x < canvas.width; x += gridSize) {
-      ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height); ctx.stroke();
+    // Batch all grid lines into one path
+    ctx.beginPath();
+    const sx = -(camX % gridSize);
+    const sy = -(camY % gridSize);
+    for (let x = sx; x < w; x += gridSize) {
+      ctx.moveTo(x, 0); ctx.lineTo(x, h);
     }
-    for (let y = sy; y < canvas.height; y += gridSize) {
-      ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke();
+    for (let y = sy; y < h; y += gridSize) {
+      ctx.moveTo(0, y); ctx.lineTo(w, y);
     }
+    ctx.stroke();
   }
 
   function drawBorder() {
     ctx.strokeStyle = 'rgba(255,50,50,0.4)';
     ctx.lineWidth = 4;
-    const tl = worldToScreen(0, 0);
-    const br = worldToScreen(worldW, worldH);
-    ctx.strokeRect(tl.x, tl.y, br.x - tl.x, br.y - tl.y);
+    const ox = -camera.x + halfW();
+    const oy = -camera.y + halfH();
+    ctx.strokeRect(ox, oy, worldW, worldH);
   }
 
   function drawFood() {
-    for (const f of state.food) {
-      const p = worldToScreen(f.x, f.y);
-      if (p.x < -20 || p.x > canvas.width + 20 || p.y < -20 || p.y > canvas.height + 20) continue;
-      const r = f.value > 1 ? 6 : 4;
+    const w = canvas.width, h = canvas.height;
+    const ox = -camera.x + halfW();
+    const oy = -camera.y + halfH();
+    // Group food by color to minimize fillStyle changes
+    const byColor = {};
+    for (let i = 0; i < state.food.length; i++) {
+      const f = state.food[i];
+      const sx = f.x + ox;
+      const sy = f.y + oy;
+      if (sx < -10 || sx > w + 10 || sy < -10 || sy > h + 10) continue;
+      if (!byColor[f.color]) byColor[f.color] = [];
+      byColor[f.color].push(sx, sy, f.value > 1 ? 5 : 3);
+    }
+    for (const color in byColor) {
+      ctx.fillStyle = color;
       ctx.beginPath();
-      ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
-      ctx.fillStyle = f.color;
-      ctx.fill();
-      // glow
-      ctx.beginPath();
-      ctx.arc(p.x, p.y, r + 3, 0, Math.PI * 2);
-      ctx.fillStyle = f.color.replace(')', ',0.15)').replace('rgb', 'rgba');
+      const arr = byColor[color];
+      for (let i = 0; i < arr.length; i += 3) {
+        ctx.moveTo(arr[i] + arr[i + 2], arr[i + 1]);
+        ctx.arc(arr[i], arr[i + 1], arr[i + 2], 0, PI2);
+      }
       ctx.fill();
     }
   }
@@ -570,81 +562,117 @@
     const segments = p.segments;
     if (!segments || segments.length < 2) return;
     const radius = 10 + Math.sqrt(p.score) * 1.2;
+    const w = canvas.width, h = canvas.height;
+    const ox = -camera.x + halfW();
+    const oy = -camera.y + halfH();
+    const sat = p.boosting ? 100 : 75;
+    const hue = p.hue;
+    const hue2 = (hue + 30) % 360;
+    const len = segments.length;
+    const invLen = 1 / len;
 
-    // Body
-    for (let i = segments.length - 1; i >= 0; i--) {
-      const s = worldToScreen(segments[i].x, segments[i].y);
-      if (s.x < -radius * 2 || s.x > canvas.width + radius * 2 ||
-          s.y < -radius * 2 || s.y > canvas.height + radius * 2) continue;
-      const t = 1 - i / segments.length;
+    // Draw body — batch segments by color (main + stripe)
+    // Main body pass
+    ctx.beginPath();
+    let lastColor = '';
+    for (let i = len - 1; i >= 0; i--) {
+      const sx = segments[i].x + ox;
+      const sy = segments[i].y + oy;
+      if (sx < -radius * 2 || sx > w + radius * 2 ||
+          sy < -radius * 2 || sy > h + radius * 2) continue;
+      const t = 1 - i * invLen;
       const r = radius * (0.5 + t * 0.5);
       const light = 50 + t * 15;
-      const sat = p.boosting ? 100 : 75;
-
-      ctx.beginPath();
-      ctx.arc(s.x, s.y, r, 0, Math.PI * 2);
-      ctx.fillStyle = `hsl(${p.hue}, ${sat}%, ${light}%)`;
-      ctx.fill();
-
-      // stripe
-      if (i % 6 < 3) {
+      const c = hsl(hue, sat, light);
+      if (c !== lastColor) {
+        if (lastColor) ctx.fill();
+        ctx.fillStyle = c;
         ctx.beginPath();
-        ctx.arc(s.x, s.y, r * 0.7, 0, Math.PI * 2);
-        ctx.fillStyle = `hsl(${(p.hue + 30) % 360}, ${sat}%, ${light + 10}%)`;
-        ctx.fill();
+        lastColor = c;
       }
+      ctx.moveTo(sx + r, sy);
+      ctx.arc(sx, sy, r, 0, PI2);
     }
+    ctx.fill();
+
+    // Stripe pass (every other group of 3)
+    ctx.beginPath();
+    lastColor = '';
+    for (let i = len - 1; i >= 0; i--) {
+      if (i % 6 >= 3) continue;
+      const sx = segments[i].x + ox;
+      const sy = segments[i].y + oy;
+      if (sx < -radius * 2 || sx > w + radius * 2 ||
+          sy < -radius * 2 || sy > h + radius * 2) continue;
+      const t = 1 - i * invLen;
+      const r = radius * (0.5 + t * 0.5) * 0.7;
+      const light = 60 + t * 15;
+      const c = hsl(hue2, sat, light);
+      if (c !== lastColor) {
+        if (lastColor) ctx.fill();
+        ctx.fillStyle = c;
+        ctx.beginPath();
+        lastColor = c;
+      }
+      ctx.moveTo(sx + r, sy);
+      ctx.arc(sx, sy, r, 0, PI2);
+    }
+    ctx.fill();
 
     // Eyes on head
-    const head = worldToScreen(segments[0].x, segments[0].y);
-    const angle = segments.length > 1
-      ? Math.atan2(segments[0].y - segments[1].y, segments[0].x - segments[1].x)
-      : 0;
-    const eyeOffset = radius * 0.4;
-    for (const side of [-1, 1]) {
-      const ex = head.x + Math.cos(angle + side * 0.5) * eyeOffset;
-      const ey = head.y + Math.sin(angle + side * 0.5) * eyeOffset;
-      ctx.beginPath();
-      ctx.arc(ex, ey, radius * 0.25, 0, Math.PI * 2);
-      ctx.fillStyle = '#fff';
-      ctx.fill();
-      ctx.beginPath();
-      ctx.arc(ex + Math.cos(angle) * radius * 0.08, ey + Math.sin(angle) * radius * 0.08, radius * 0.13, 0, Math.PI * 2);
-      ctx.fillStyle = '#111';
-      ctx.fill();
-    }
+    const hx = segments[0].x + ox;
+    const hy = segments[0].y + oy;
+    const angle = Math.atan2(segments[0].y - segments[1].y, segments[0].x - segments[1].x);
+    const eo = radius * 0.4;
+    const cosA = Math.cos(angle);
+    const sinA = Math.sin(angle);
+
+    ctx.fillStyle = '#fff';
+    ctx.beginPath();
+    const ex1 = hx + Math.cos(angle - 0.5) * eo;
+    const ey1 = hy + Math.sin(angle - 0.5) * eo;
+    const ex2 = hx + Math.cos(angle + 0.5) * eo;
+    const ey2 = hy + Math.sin(angle + 0.5) * eo;
+    ctx.moveTo(ex1 + radius * 0.25, ey1);
+    ctx.arc(ex1, ey1, radius * 0.25, 0, PI2);
+    ctx.moveTo(ex2 + radius * 0.25, ey2);
+    ctx.arc(ex2, ey2, radius * 0.25, 0, PI2);
+    ctx.fill();
+
+    ctx.fillStyle = '#111';
+    ctx.beginPath();
+    const po = radius * 0.08;
+    ctx.arc(ex1 + cosA * po, ey1 + sinA * po, radius * 0.13, 0, PI2);
+    ctx.moveTo(ex2 + cosA * po + radius * 0.13, ey2 + sinA * po);
+    ctx.arc(ex2 + cosA * po, ey2 + sinA * po, radius * 0.13, 0, PI2);
+    ctx.fill();
 
     // Name tag
-    const nameY = head.y - radius - 14;
-    ctx.font = '600 13px "Segoe UI", sans-serif';
+    ctx.font = '600 13px "Segoe UI",sans-serif';
     ctx.textAlign = 'center';
     ctx.fillStyle = isMe ? '#ffa502' : 'rgba(255,255,255,0.7)';
-    ctx.fillText(p.name, head.x, nameY);
+    ctx.fillText(p.name, hx, hy - radius - 14);
   }
 
+  // Minimap: only redraw every 3rd frame
+  let mmFrame = 0;
   function drawMinimap() {
+    mmFrame++;
+    if (mmFrame % 3 !== 0) return;
     mmCtx.clearRect(0, 0, 140, 140);
     mmCtx.fillStyle = 'rgba(10,10,30,0.4)';
     mmCtx.fillRect(0, 0, 140, 140);
-
-    // border
     mmCtx.strokeStyle = 'rgba(255,50,50,0.3)';
     mmCtx.strokeRect(0, 0, 140, 140);
 
-    // food dots
-    mmCtx.fillStyle = 'rgba(255,255,255,0.15)';
-    for (let i = 0; i < state.food.length; i += 5) {
-      const f = state.food[i];
-      mmCtx.fillRect(f.x / worldW * 140, f.y / worldH * 140, 1, 1);
-    }
-
-    // players
+    // players only (skip food on minimap — saves cycles)
     for (const p of Object.values(state.players)) {
+      if (!p.segments || !p.segments.length) continue;
       const mx = p.segments[0].x / worldW * 140;
       const my = p.segments[0].y / worldH * 140;
       mmCtx.beginPath();
-      mmCtx.arc(mx, my, p.id === myId ? 3 : 2, 0, Math.PI * 2);
-      mmCtx.fillStyle = p.id === myId ? '#ffa502' : `hsl(${p.hue}, 70%, 60%)`;
+      mmCtx.arc(mx, my, p.id === myId ? 3 : 2, 0, PI2);
+      mmCtx.fillStyle = p.id === myId ? '#ffa502' : hsl(p.hue, 70, 60);
       mmCtx.fill();
     }
   }
@@ -674,30 +702,18 @@
     playerCountEl.textContent = `${count} player${count !== 1 ? 's' : ''} online`;
   }
 
-  // ── Cursor ────────────────────────────────────────────────
-  function drawCursor(e) {
-    // Custom cursor
-    ctx.beginPath();
-    ctx.arc(canvas.width / 2 + Math.cos(mouseAngle) * 60,
-            canvas.height / 2 + Math.sin(mouseAngle) * 60,
-            5, 0, Math.PI * 2);
-    ctx.strokeStyle = 'rgba(255,255,255,0.25)';
-    ctx.lineWidth = 1.5;
-    ctx.stroke();
-  }
-
   // ── Main render loop ─────────────────────────────────────
+  let frameCount = 0;
   function render() {
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    frameCount++;
 
-    // Background
+    // Background (fillRect is faster than clearRect + fillRect)
     ctx.fillStyle = '#0a0a1a';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
     // Camera follow — own snake or leader when spectating
     let camTarget = state.players[myId];
     if (!camTarget && spectating) {
-      // follow the #1 player
       const ids = Object.keys(state.players);
       if (ids.length > 0) {
         let best = state.players[ids[0]];
@@ -722,9 +738,9 @@
     }
     if (state.players[myId]) drawSnake(state.players[myId], true);
 
-    drawCursor();
     drawMinimap();
-    updateHUD();
+    // Update HUD text only every 5th frame (DOM updates are slow)
+    if (frameCount % 5 === 0) updateHUD();
 
     requestAnimationFrame(render);
   }

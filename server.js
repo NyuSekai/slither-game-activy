@@ -214,7 +214,7 @@ function tick() {
     let da = p.targetAngle - p.angle;
     while (da > Math.PI) da -= Math.PI * 2;
     while (da < -Math.PI) da += Math.PI * 2;
-    p.angle += da * 0.15;
+    p.angle += da * 0.12;
 
     const speed = p.boosting ? BOOST_SPEED : BASE_SPEED;
     if (p.boosting) {
