@@ -17,20 +17,24 @@ app.use(express.static(path.join(__dirname, 'public')));
 const WORLD_W = 4000;
 const WORLD_H = 4000;
 const TICK_RATE = 20;           // server ticks per second
+const SEND_RATE = 10;           // network updates per second (half of tick rate)
 const MAX_FOOD = 600;
 const FOOD_VALUE = 4;
 const BASE_SPEED = 12;
 const BOOST_SPEED = 24;
-const BOOST_DRAIN = 0.4;       // score lost per tick while boosting
+const BOOST_DRAIN = 0.4;
 const SEGMENT_SPACING = 12;
 const START_LENGTH = 10;
 const MAX_PLAYERS = 20;
 const MAX_LIVES = 2;
+const VIEW_RANGE = 1100;        // how far each player can "see"
+const SEG_SKIP = 3;             // send every Nth segment for other snakes
 
 // ── State ───────────────────────────────────────────────────
-const players = {};   // id -> player object
-let food = [];        // { x, y, color, value }
-let leaderboard = []; // sorted top 10
+const players = {};
+let food = [];
+let leaderboard = [];
+let tickCount = 0;
 
 // ── Helpers ─────────────────────────────────────────────────
 function rand(min, max) { return Math.random() * (max - min) + min; }
@@ -56,7 +60,6 @@ function initFood() {
 }
 
 function spawnOrbs(segments, score) {
-  // when a snake dies, drop some food along its body
   const orbs = [];
   const count = Math.min(segments.length, Math.floor(score / 2) + 5);
   for (let i = 0; i < count; i++) {
@@ -111,33 +114,108 @@ function checkHeadToBody(p) {
     const other = players[oid];
     if (!other.alive) continue;
     const otherR = getRadius(other.score);
-    // check head against other's segments (skip first 5 to avoid false positives)
     for (let i = 5; i < other.segments.length; i++) {
       const seg = other.segments[i];
       const dx = p.x - seg.x;
       const dy = p.y - seg.y;
-      const dist = Math.sqrt(dx * dx + dy * dy);
-      if (dist < headR * 0.5 + otherR * 0.5) {
-        return other; // p collided with other
+      const dist = dx * dx + dy * dy; // skip sqrt, compare squared
+      const minDist = headR * 0.5 + otherR * 0.5;
+      if (dist < minDist * minDist) {
+        return other;
       }
     }
   }
   return null;
 }
 
+// ── Per-player viewport culling ─────────────────────────────
+// Round coords to integers to save bytes in JSON
+function R(v) { return Math.round(v); }
+
+function getVisibleFood(cx, cy) {
+  const r = VIEW_RANGE;
+  const result = [];
+  for (let i = 0; i < food.length; i++) {
+    const f = food[i];
+    const dx = f.x - cx;
+    const dy = f.y - cy;
+    if (dx > -r && dx < r && dy > -r && dy < r) {
+      // Short keys: x,y,c(color),v(value)
+      result.push({ x: R(f.x), y: R(f.y), c: f.color, v: f.value });
+    }
+  }
+  return result;
+}
+
+function getVisiblePlayers(cx, cy, viewerId) {
+  const r = VIEW_RANGE + 500;
+  const result = {};
+  for (const p of Object.values(players)) {
+    if (!p.alive) continue;
+    const dx = p.x - cx;
+    const dy = p.y - cy;
+    const inRange = (dx > -r && dx < r && dy > -r && dy < r);
+
+    if (!inRange) {
+      let anyVisible = false;
+      for (let i = 0; i < p.segments.length; i += 10) {
+        const sdx = p.segments[i].x - cx;
+        const sdy = p.segments[i].y - cy;
+        if (sdx > -r && sdx < r && sdy > -r && sdy < r) {
+          anyVisible = true;
+          break;
+        }
+      }
+      if (!anyVisible) continue;
+    }
+
+    // Downsample + round segments
+    let segs;
+    if (p.id === viewerId) {
+      // Own snake: send every 2nd segment (still very smooth)
+      segs = [];
+      for (let i = 0; i < p.segments.length; i++) {
+        if (i === 0 || i === p.segments.length - 1 || i % 2 === 0) {
+          segs.push([R(p.segments[i].x), R(p.segments[i].y)]); // array instead of object
+        }
+      }
+    } else {
+      // Other snakes: every SEG_SKIP-th segment
+      segs = [];
+      for (let i = 0; i < p.segments.length; i++) {
+        if (i === 0 || i === p.segments.length - 1 || i % SEG_SKIP === 0) {
+          segs.push([R(p.segments[i].x), R(p.segments[i].y)]);
+        }
+      }
+    }
+
+    // Short keys: n(name), s(segments), sc(score), h(hue), b(boosting), l(lives)
+    result[p.id] = {
+      id: p.id,
+      n: p.name,
+      s: segs,
+      sc: Math.floor(p.score),
+      h: p.hue,
+      b: p.boosting,
+      l: p.lives
+    };
+  }
+  return result;
+}
+
 // ── Game loop ───────────────────────────────────────────────
 function tick() {
+  tickCount++;
+
   // update each player
   for (const p of Object.values(players)) {
     if (!p.alive) continue;
 
-    // smooth angle interpolation
     let da = p.targetAngle - p.angle;
     while (da > Math.PI) da -= Math.PI * 2;
     while (da < -Math.PI) da += Math.PI * 2;
     p.angle += da * 0.15;
 
-    // speed
     const speed = p.boosting ? BOOST_SPEED : BASE_SPEED;
     if (p.boosting) {
       p.score -= BOOST_DRAIN;
@@ -147,37 +225,33 @@ function tick() {
       }
     }
 
-    // move head
     p.x += Math.cos(p.angle) * speed;
     p.y += Math.sin(p.angle) * speed;
 
-    // world bounds wrap
     if (p.x < 0) p.x += WORLD_W;
     if (p.x > WORLD_W) p.x -= WORLD_W;
     if (p.y < 0) p.y += WORLD_H;
     if (p.y > WORLD_H) p.y -= WORLD_H;
 
-    // insert new head position
     p.segments.unshift({ x: p.x, y: p.y });
 
-    // trim tail to match score
     const targetLen = Math.floor(p.score);
     while (p.segments.length > targetLen) p.segments.pop();
 
     // eat food
     const headR = getRadius(p.score);
+    const headR2 = headR * headR;
     for (let i = food.length - 1; i >= 0; i--) {
       const f = food[i];
       const dx = p.x - f.x;
       const dy = p.y - f.y;
-      if (dx * dx + dy * dy < headR * headR) {
+      if (dx * dx + dy * dy < headR2) {
         p.score += f.value;
         food.splice(i, 1);
         food.push(spawnFood());
       }
     }
 
-    // collision with other snakes
     const killer = checkHeadToBody(p);
     if (killer) {
       p.alive = false;
@@ -194,35 +268,45 @@ function tick() {
     }
   }
 
+  // Only send network updates at SEND_RATE (every other tick)
+  if (tickCount % (TICK_RATE / SEND_RATE) !== 0) return;
+
   // leaderboard
   leaderboard = Object.values(players)
     .filter(p => p.alive)
     .sort((a, b) => b.score - a.score)
     .slice(0, 10)
-    .map(p => ({ name: p.name, score: Math.floor(p.score) }));
+    .map(p => ({ n: p.name, sc: Math.floor(p.score) }));
 
-  // broadcast state
-  const alivePlayers = {};
-  for (const p of Object.values(players)) {
-    if (!p.alive) continue;
-    alivePlayers[p.id] = {
-      id: p.id,
-      name: p.name,
-      segments: p.segments,
-      score: Math.floor(p.score),
-      hue: p.hue,
-      boosting: p.boosting,
-      lives: p.lives
-    };
+  // Send each player only what they can see
+  for (const socket of io.sockets.sockets.values()) {
+    const p = players[socket.id];
+    if (!p) continue;
+
+    let cx, cy;
+    if (p.alive) {
+      cx = p.x;
+      cy = p.y;
+    } else if (p.spectating) {
+      // spectators see the leader
+      const leader = Object.values(players).filter(pl => pl.alive).sort((a, b) => b.score - a.score)[0];
+      if (leader) { cx = leader.x; cy = leader.y; }
+      else continue;
+    } else {
+      continue;
+    }
+
+    const visibleFood = getVisibleFood(cx, cy);
+    const visiblePlayers = getVisiblePlayers(cx, cy, socket.id);
+
+    socket.emit('state', {
+      players: visiblePlayers,
+      food: visibleFood,
+      leaderboard,
+      worldW: WORLD_W,
+      worldH: WORLD_H
+    });
   }
-
-  io.emit('state', {
-    players: alivePlayers,
-    food,
-    leaderboard,
-    worldW: WORLD_W,
-    worldH: WORLD_H
-  });
 }
 
 // ── Socket handling ─────────────────────────────────────────

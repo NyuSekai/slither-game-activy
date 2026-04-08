@@ -265,9 +265,40 @@
     });
 
     socket.on('state', (s) => {
-      state = s;
+      // Decode compressed format from server
       if (s.worldW) worldW = s.worldW;
       if (s.worldH) worldH = s.worldH;
+
+      // Decode players: short keys -> full keys, arrays -> objects
+      const decoded = {};
+      for (const [id, p] of Object.entries(s.players)) {
+        const segs = p.s.map(seg => Array.isArray(seg) ? { x: seg[0], y: seg[1] } : seg);
+        decoded[id] = {
+          id: p.id,
+          name: p.n,
+          segments: segs,
+          score: p.sc,
+          hue: p.h,
+          boosting: p.b,
+          lives: p.l
+        };
+      }
+
+      // Decode food: short keys -> full keys
+      const decodedFood = s.food.map(f => ({
+        x: f.x, y: f.y, color: f.c, value: f.v
+      }));
+
+      // Decode leaderboard
+      const decodedLb = (s.leaderboard || []).map(e => ({
+        name: e.n, score: e.sc
+      }));
+
+      state = {
+        players: decoded,
+        food: decodedFood,
+        leaderboard: decodedLb
+      };
     });
 
     socket.on('dead', (data) => {
