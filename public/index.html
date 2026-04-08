@@ -176,7 +176,7 @@
   <p class="sub">Multiplayer Snake Game</p>
   <input id="nameInput" type="text" placeholder="Your name" maxlength="16" autocomplete="off" />
   <button id="playBtn">PLAY</button>
-  <p id="controls-hint">Mouse or Arrow Keys to steer &bull; Click / Space / W to boost</p>
+  <p id="controls-hint">Mouse or Arrow Keys to steer &bull; Space to boost</p>
 </div>
 
 <!-- Death screen -->
@@ -390,27 +390,33 @@
     mouseAngle += diff * 0.35;
   });
 
-  // Mouse click: boost + request pointer lock
+  // Mouse click: only used to request pointer lock (no boost)
   canvas.addEventListener('mousedown', () => {
-    if (playing) {
-      boosting = true;
-      requestPointerLock();
-    }
+    if (playing) requestPointerLock();
   });
-  window.addEventListener('mouseup', () => { boosting = false; });
+
+  // Helper: check if user is typing in a text input
+  function isTyping() {
+    const el = document.activeElement;
+    return el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA');
+  }
 
   // Keyboard
   window.addEventListener('keydown', (e) => {
+    // Don't capture keys when typing a name
+    if (isTyping()) return;
+
     keysDown[e.code] = true;
+    // Boost: spacebar ONLY
     if (e.code === 'Space') { boosting = true; e.preventDefault(); }
     if (e.code === 'ArrowLeft' || e.code === 'ArrowRight' ||
         e.code === 'KeyA' || e.code === 'KeyD') {
       usingKeyboard = true;
       e.preventDefault();
     }
-    // Press Escape exits pointer lock automatically (browser handles this)
   });
   window.addEventListener('keyup', (e) => {
+    if (isTyping()) return;
     keysDown[e.code] = false;
     if (e.code === 'Space') boosting = false;
   });
@@ -422,8 +428,6 @@
       if (keysDown['ArrowLeft'] || keysDown['KeyA']) mouseAngle -= TURN_SPEED;
       if (keysDown['ArrowRight'] || keysDown['KeyD']) mouseAngle += TURN_SPEED;
     }
-    // Also support up arrow / W for boost
-    if (keysDown['ArrowUp'] || keysDown['KeyW']) boosting = true;
 
     if (socket && playing) {
       socket.emit('input', { angle: mouseAngle, boosting });
