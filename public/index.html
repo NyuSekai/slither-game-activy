@@ -28,23 +28,13 @@
   }
   #menu.hidden { display: none; }
 
-  /* Activy logo */
-  #activy-logo {
-    width: 220px;
-    margin-bottom: -4px;
+  /* Banner image */
+  #banner-img {
+    width: 420px;
+    max-width: 90vw;
+    border-radius: 16px;
+    margin-bottom: 8px;
   }
-
-  /* Game subtitle */
-  #menu h1 {
-    font-size: 36px;
-    font-weight: 900;
-    color: #fff;
-    letter-spacing: 2px;
-    text-transform: uppercase;
-    margin-top: -8px;
-  }
-  #menu h1 span { color: #5DBE77; }
-  #menu p.sub { color: #8888aa; font-size: 14px; margin-top: -8px; }
   #nameInput {
     padding: 14px 24px;
     font-size: 20px;
@@ -75,38 +65,58 @@
     color: #555; font-size: 12px; margin-top: 6px;
   }
 
-  /* ── Decorative snakes on menu ────────────────── */
-  .menu-snake {
-    position: absolute;
-    pointer-events: none;
-    z-index: 0;
+  /* ── Podium / Winner screen ────────────────────── */
+  #podiumScreen {
+    position: fixed; inset: 0;
+    display: none; flex-direction: column;
+    align-items: center; justify-content: center;
+    background: rgba(10,10,26,0.95);
+    z-index: 110; gap: 10px;
   }
-  .menu-snake.left {
-    left: -30px;
-    top: 50%;
-    transform: translateY(-50%);
+  #podiumScreen.show { display: flex; }
+  #podiumScreen h2 {
+    font-size: 42px; font-weight: 900; color: #5DBE77;
+    letter-spacing: 3px; margin-bottom: 10px;
   }
-  .menu-snake.right {
-    right: -30px;
-    top: 50%;
-    transform: translateY(-50%) scaleX(-1);
+  #podium {
+    display: flex; align-items: flex-end; gap: 16px;
+    margin-bottom: 16px;
   }
-  #menu > *:not(.menu-snake) {
-    position: relative;
-    z-index: 1;
+  .podium-place {
+    display: flex; flex-direction: column;
+    align-items: center; gap: 6px;
   }
-
-  /* floating animation for snakes */
-  @keyframes floatSnake {
-    0%, 100% { transform: translateY(-50%) translateX(0px); }
-    50% { transform: translateY(-50%) translateX(15px); }
+  .podium-crown { font-size: 36px; margin-bottom: -4px; }
+  .podium-avatar {
+    width: 56px; height: 56px;
+    border-radius: 50%;
+    border: 3px solid #333;
   }
-  @keyframes floatSnakeR {
-    0%, 100% { transform: translateY(-50%) scaleX(-1) translateX(0px); }
-    50% { transform: translateY(-50%) scaleX(-1) translateX(15px); }
+  .first .podium-avatar { width: 72px; height: 72px; border-color: #ffd700; }
+  .second .podium-avatar { border-color: #c0c0c0; }
+  .third .podium-avatar { border-color: #cd7f32; }
+  .podium-name {
+    color: #fff; font-size: 16px; font-weight: 700;
+    max-width: 120px; text-align: center;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
-  .menu-snake.left { animation: floatSnake 4s ease-in-out infinite; }
-  .menu-snake.right { animation: floatSnakeR 4s ease-in-out infinite; }
+  .podium-score { color: #aaa; font-size: 14px; }
+  .podium-bar {
+    width: 100px; text-align: center;
+    color: #fff; font-weight: 800; font-size: 18px;
+    border-radius: 8px 8px 0 0;
+    padding-top: 10px;
+  }
+  .first .podium-bar {
+    height: 140px; background: linear-gradient(180deg, #ffd700, #b8960f);
+  }
+  .second .podium-bar {
+    height: 100px; background: linear-gradient(180deg, #c0c0c0, #888);
+  }
+  .third .podium-bar {
+    height: 70px; background: linear-gradient(180deg, #cd7f32, #8a5520);
+  }
+  #podiumSub { color: #888; font-size: 14px; margin-top: 6px; }
 
   /* ── HUD ───────────────────────────────────────── */
   #hud {
@@ -141,6 +151,12 @@
     font-weight: 700;
     text-shadow: 0 2px 8px rgba(0,0,0,0.6);
   }
+  #timerHud {
+    position: fixed; top: 12px; left: 12px;
+    color: #5DBE77; font-size: 18px; font-weight: 700;
+    text-shadow: 0 2px 6px rgba(0,0,0,0.5);
+  }
+  #timerHud.warning { color: #ff4757; }
   #playerCount {
     position: fixed; bottom: 12px; left: 12px;
     color: #555; font-size: 12px;
@@ -210,58 +226,8 @@
 <!-- Menu -->
 <div id="menu">
 
-  <!-- Decorative snake LEFT (green - Activy brand) -->
-  <svg class="menu-snake left" width="200" height="400" viewBox="0 0 200 400">
-    <!-- Body -->
-    <path d="M160,40 C180,60 170,100 140,120 C110,140 100,170 120,200 C140,230 130,260 100,280 C70,300 80,340 110,360" stroke="#5DBE77" stroke-width="32" stroke-linecap="round" fill="none"/>
-    <!-- Stripe pattern -->
-    <path d="M160,40 C180,60 170,100 140,120 C110,140 100,170 120,200 C140,230 130,260 100,280 C70,300 80,340 110,360" stroke="#4AA866" stroke-width="20" stroke-linecap="round" fill="none" stroke-dasharray="25 25" stroke-dashoffset="10"/>
-    <!-- Head -->
-    <circle cx="155" cy="38" r="22" fill="#5DBE77"/>
-    <circle cx="155" cy="38" r="18" fill="#4AA866"/>
-    <!-- Eyes -->
-    <circle cx="148" cy="30" r="6" fill="white"/>
-    <circle cx="164" cy="30" r="6" fill="white"/>
-    <circle cx="149" cy="29" r="3" fill="#111"/>
-    <circle cx="165" cy="29" r="3" fill="#111"/>
-    <!-- Tongue -->
-    <path d="M156,50 L156,62 L150,68 M156,62 L162,68" stroke="#ff4757" stroke-width="2.5" stroke-linecap="round" fill="none"/>
-  </svg>
-
-  <!-- Decorative snake RIGHT (purple - Activy accent) -->
-  <svg class="menu-snake right" width="200" height="400" viewBox="0 0 200 400">
-    <!-- Body -->
-    <path d="M160,360 C180,340 170,300 140,280 C110,260 100,230 120,200 C140,170 130,140 100,120 C70,100 80,60 110,40" stroke="#9A40F6" stroke-width="32" stroke-linecap="round" fill="none"/>
-    <!-- Stripe pattern -->
-    <path d="M160,360 C180,340 170,300 140,280 C110,260 100,230 120,200 C140,170 130,140 100,120 C70,100 80,60 110,40" stroke="#7B2ED6" stroke-width="20" stroke-linecap="round" fill="none" stroke-dasharray="25 25" stroke-dashoffset="5"/>
-    <!-- Head -->
-    <circle cx="112" cy="38" r="22" fill="#9A40F6"/>
-    <circle cx="112" cy="38" r="18" fill="#7B2ED6"/>
-    <!-- Eyes -->
-    <circle cx="104" cy="30" r="6" fill="white"/>
-    <circle cx="120" cy="30" r="6" fill="white"/>
-    <circle cx="105" cy="29" r="3" fill="#111"/>
-    <circle cx="121" cy="29" r="3" fill="#111"/>
-    <!-- Tongue -->
-    <path d="M112,50 L112,62 L106,68 M112,62 L118,68" stroke="#ff4757" stroke-width="2.5" stroke-linecap="round" fill="none"/>
-  </svg>
-
-  <!-- Activy Logo (inline SVG matching brand) -->
-  <svg id="activy-logo" viewBox="0 0 400 120" xmlns="http://www.w3.org/2000/svg">
-    <!-- Brush-style "Activy" text -->
-    <defs>
-      <linearGradient id="logoGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-        <stop offset="0%" stop-color="#5DBE77"/>
-        <stop offset="100%" stop-color="#4AA866"/>
-      </linearGradient>
-    </defs>
-    <text x="200" y="78" text-anchor="middle" font-family="'Segoe UI', Arial, sans-serif" font-weight="900" font-size="80" font-style="italic" fill="url(#logoGrad)">Activy</text>
-    <!-- Swoosh underline -->
-    <path d="M80,92 Q200,108 340,88" stroke="#5DBE77" stroke-width="5" stroke-linecap="round" fill="none"/>
-  </svg>
-
-  <h1><span>SLITHER</span>.IO</h1>
-  <p class="sub">Multiplayer Snake Game</p>
+  <!-- Banner image -->
+  <img id="banner-img" src="/banner.svg" alt="Activy Slither IO" />
   <input id="nameInput" type="text" placeholder="Your name" maxlength="16" autocomplete="off" />
   <button id="playBtn">PLAY</button>
   <p id="controls-hint">Mouse or Arrow Keys to steer &bull; Space to boost</p>
@@ -274,6 +240,33 @@
   <div class="final-score" id="finalScore">0</div>
   <p id="livesInfo"></p>
   <button id="respawnBtn">PLAY AGAIN</button>
+</div>
+
+<!-- Winner / Podium screen -->
+<div id="podiumScreen">
+  <h2>GAME OVER</h2>
+  <div id="podium">
+    <div class="podium-place second">
+      <div class="podium-avatar" id="p2avatar"></div>
+      <div class="podium-name" id="p2name">---</div>
+      <div class="podium-score" id="p2score">0</div>
+      <div class="podium-bar">2nd</div>
+    </div>
+    <div class="podium-place first">
+      <div class="podium-crown">&#x1F451;</div>
+      <div class="podium-avatar" id="p1avatar"></div>
+      <div class="podium-name" id="p1name">---</div>
+      <div class="podium-score" id="p1score">0</div>
+      <div class="podium-bar">1st</div>
+    </div>
+    <div class="podium-place third">
+      <div class="podium-avatar" id="p3avatar"></div>
+      <div class="podium-name" id="p3name">---</div>
+      <div class="podium-score" id="p3score">0</div>
+      <div class="podium-bar">3rd</div>
+    </div>
+  </div>
+  <p id="podiumSub">Thanks for playing!</p>
 </div>
 
 <!-- Spectator banner -->
@@ -290,6 +283,7 @@
     <h3>Leaderboard</h3>
     <div id="lbBody"></div>
   </div>
+  <div id="timerHud"></div>
   <div id="playerCount"></div>
   <div id="minimap"><canvas id="minimapCanvas" width="140" height="140"></canvas></div>
 </div>
@@ -314,7 +308,18 @@
   const myScoreEl = document.getElementById('myScore');
   const livesHud = document.getElementById('livesHud');
   const lbBody  = document.getElementById('lbBody');
+  const podiumScreen = document.getElementById('podiumScreen');
+  const p1name = document.getElementById('p1name');
+  const p1score = document.getElementById('p1score');
+  const p1avatar = document.getElementById('p1avatar');
+  const p2name = document.getElementById('p2name');
+  const p2score = document.getElementById('p2score');
+  const p2avatar = document.getElementById('p2avatar');
+  const p3name = document.getElementById('p3name');
+  const p3score = document.getElementById('p3score');
+  const p3avatar = document.getElementById('p3avatar');
   const playerCountEl = document.getElementById('playerCount');
+  const timerHud = document.getElementById('timerHud');
   const spectatorBanner = document.getElementById('spectatorBanner');
 
   // ── State ─────────────────────────────────────────────────
@@ -426,6 +431,40 @@
 
     socket.on('full', () => {
       alert('Server is full! Try again later.');
+    });
+
+    socket.on('gameOver', (data) => {
+      playing = false;
+      spectating = false;
+      deathScreen.classList.remove('show');
+      spectatorBanner.classList.remove('show');
+
+      const top3 = data.top3 || [];
+      const els = [
+        { name: p1name, score: p1score, avatar: p1avatar },
+        { name: p2name, score: p2score, avatar: p2avatar },
+        { name: p3name, score: p3score, avatar: p3avatar }
+      ];
+      for (let i = 0; i < 3; i++) {
+        if (top3[i]) {
+          els[i].name.textContent = top3[i].n;
+          els[i].score.textContent = top3[i].sc + ' pts';
+          els[i].avatar.style.background = `hsl(${top3[i].h}, 70%, 50%)`;
+        } else {
+          els[i].name.textContent = '---';
+          els[i].score.textContent = '';
+          els[i].avatar.style.background = '#333';
+        }
+      }
+      podiumScreen.classList.add('show');
+    });
+
+    socket.on('timeLeft', (seconds) => {
+      const min = Math.floor(seconds / 60);
+      const sec = String(seconds % 60).padStart(2, '0');
+      timerHud.textContent = `${min}:${sec}`;
+      if (seconds <= 60) timerHud.classList.add('warning');
+      else timerHud.classList.remove('warning');
     });
   }
 

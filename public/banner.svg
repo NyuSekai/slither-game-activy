@@ -1,0 +1,59 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 500">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#5DBE77"/>
+      <stop offset="100%" stop-color="#4AAF66"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Background -->
+  <rect width="800" height="500" rx="16" fill="url(#bg)"/>
+
+  <!-- City skyline silhouette (darker green) -->
+  <g fill="#4DA86A" opacity="0.5">
+    <!-- Left buildings -->
+    <rect x="0" y="360" width="35" height="140"/>
+    <rect x="40" y="330" width="30" height="170"/>
+    <rect x="28" y="320" width="8" height="10"/>
+    <rect x="75" y="370" width="40" height="130"/>
+    <rect x="120" y="340" width="25" height="160"/>
+    <rect x="150" y="380" width="35" height="120"/>
+    <rect x="190" y="350" width="20" height="150"/>
+    <rect x="215" y="390" width="30" height="110"/>
+    <!-- Center buildings -->
+    <rect x="260" y="400" width="40" height="100"/>
+    <rect x="305" y="370" width="25" height="130"/>
+    <rect x="335" y="410" width="35" height="90"/>
+    <rect x="375" y="390" width="20" height="110"/>
+    <rect x="400" y="420" width="30" height="80"/>
+    <!-- Right buildings -->
+    <rect x="450" y="380" width="25" height="120"/>
+    <rect x="480" y="400" width="35" height="100"/>
+    <rect x="520" y="360" width="20" height="140"/>
+    <rect x="545" y="390" width="30" height="110"/>
+    <!-- Ferris wheel area -->
+    <circle cx="640" cy="400" r="55" fill="none" stroke="#4DA86A" stroke-width="4" opacity="0.5"/>
+    <line x1="640" y1="345" x2="640" y2="455" stroke="#4DA86A" stroke-width="3" opacity="0.4"/>
+    <line x1="585" y1="400" x2="695" y2="400" stroke="#4DA86A" stroke-width="3" opacity="0.4"/>
+    <line x1="601" y1="361" x2="679" y2="439" stroke="#4DA86A" stroke-width="3" opacity="0.4"/>
+    <line x1="601" y1="439" x2="679" y2="361" stroke="#4DA86A" stroke-width="3" opacity="0.4"/>
+    <rect x="625" y="450" width="30" height="50"/>
+    <!-- Far right -->
+    <rect x="700" y="370" width="30" height="130"/>
+    <rect x="735" y="350" width="25" height="150"/>
+    <rect x="765" y="380" width="35" height="120"/>
+  </g>
+
+  <!-- Ground line -->
+  <rect x="0" y="484" width="800" height="16" rx="0" fill="#4DA86A" opacity="0.4"/>
+
+  <!-- "Activy" text - brush style -->
+  <text x="400" y="210" text-anchor="middle" font-family="'Segoe UI','Helvetica Neue',Arial,sans-serif" font-weight="900" font-style="italic" font-size="120" fill="white" letter-spacing="-2">Activy</text>
+
+  <!-- Swoosh underline -->
+  <path d="M220,230 Q400,270 600,225" stroke="white" stroke-width="6" stroke-linecap="round" fill="none"/>
+  <path d="M600,225 L590,215" stroke="white" stroke-width="5" stroke-linecap="round" fill="none"/>
+
+  <!-- "slither io" text -->
+  <text x="400" y="300" text-anchor="middle" font-family="'Segoe UI','Helvetica Neue',Arial,sans-serif" font-weight="700" font-size="52" fill="white" letter-spacing="3">slither io</text>
+</svg>

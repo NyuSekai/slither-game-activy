@@ -27,6 +27,7 @@ const SEGMENT_SPACING = 12;
 const START_LENGTH = 10;
 const MAX_PLAYERS = 20;
 const MAX_LIVES = 2;
+const GAME_DURATION = 15 * 60; // 15 minutes in seconds
 const VIEW_RANGE = 1100;        // how far each player can "see"
 const SEG_SKIP = 3;             // send every Nth segment for other snakes
 
@@ -35,6 +36,11 @@ const players = {};
 let food = [];
 let leaderboard = [];
 let tickCount = 0;
+let gameActive = true;
+let gameStartTime = null;
+
+// Track best scores across the entire game (even after death)
+const allTimeScores = {}; // id -> { name, score, hue }
 
 // ── Helpers ─────────────────────────────────────────────────
 function rand(min, max) { return Math.random() * (max - min) + min; }
@@ -203,9 +209,62 @@ function getVisiblePlayers(cx, cy, viewerId) {
   return result;
 }
 
+// ── End game ────────────────────────────────────────────────
+function endGame() {
+  if (!gameActive) return;
+  gameActive = false;
+
+  // Update all-time scores one final time for alive players
+  for (const p of Object.values(players)) {
+    if (p.alive) {
+      const existing = allTimeScores[p.id];
+      if (!existing || p.score > existing.score) {
+        allTimeScores[p.id] = { n: p.name, sc: Math.floor(p.score), h: p.hue };
+      }
+    }
+  }
+
+  // Get top 3 from all-time best scores
+  const top3 = Object.values(allTimeScores)
+    .sort((a, b) => b.sc - a.sc)
+    .slice(0, 3);
+
+  io.emit('gameOver', { top3 });
+  console.log('Game Over! Top 3:', top3.map(p => `${p.n}: ${p.sc}`).join(', '));
+}
+
 // ── Game loop ───────────────────────────────────────────────
 function tick() {
+  if (!gameActive) return;
   tickCount++;
+
+  // Start timer when first player joins
+  if (!gameStartTime && Object.keys(players).length > 0) {
+    const alivePlayers = Object.values(players).filter(p => p.alive);
+    if (alivePlayers.length > 0) gameStartTime = Date.now();
+  }
+
+  // Check time limit
+  if (gameStartTime && (Date.now() - gameStartTime) >= GAME_DURATION * 1000) {
+    endGame();
+    return;
+  }
+
+  // Check if only 1 player alive and others have been eliminated (2+ players joined)
+  const totalPlayers = Object.keys(players).length;
+  const alivePlayers = Object.values(players).filter(p => p.alive);
+  const eliminatedPlayers = Object.values(players).filter(p => p.spectating);
+  if (totalPlayers >= 2 && alivePlayers.length <= 1 && eliminatedPlayers.length >= 1) {
+    // Last snake standing — end the game after a brief delay
+    setTimeout(() => endGame(), 2000);
+  }
+
+  // Broadcast time remaining
+  if (gameStartTime && tickCount % TICK_RATE === 0) {
+    const elapsed = (Date.now() - gameStartTime) / 1000;
+    const remaining = Math.max(0, Math.floor(GAME_DURATION - elapsed));
+    io.emit('timeLeft', remaining);
+  }
 
   // update each player
   for (const p of Object.values(players)) {
@@ -250,6 +309,12 @@ function tick() {
         food.splice(i, 1);
         food.push(spawnFood());
       }
+    }
+
+    // Track best score for this player
+    const existing = allTimeScores[p.id];
+    if (!existing || p.score > existing.score) {
+      allTimeScores[p.id] = { n: p.name, sc: Math.floor(p.score), h: p.hue };
     }
 
     const killer = checkHeadToBody(p);
