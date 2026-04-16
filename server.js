@@ -17,7 +17,7 @@ app.use(express.static(path.join(__dirname, 'public')));
 const WORLD_W = 4000;
 const WORLD_H = 4000;
 const TICK_RATE = 20;           // server ticks per second
-const SEND_RATE = 10;           // network updates per second (half of tick rate)
+const SEND_RATE = 15;           // network updates per second
 const MAX_FOOD = 600;
 const FOOD_VALUE = 4;
 const BASE_SPEED = 12;
@@ -332,9 +332,6 @@ function tick() {
       }
     }
   }
-
-  // Only send network updates at SEND_RATE (every other tick)
-  if (tickCount % (TICK_RATE / SEND_RATE) !== 0) return;
 
   // leaderboard
   leaderboard = Object.values(players)

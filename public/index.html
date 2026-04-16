@@ -327,6 +327,10 @@
   let myId = null;
   let worldW = 4000, worldH = 4000;
   let state = { players: {}, food: [], leaderboard: [] };
+  let prevState = { players: {} };  // previous server snapshot
+  let stateTime = 0;               // when current state arrived
+  let prevStateTime = 0;            // when previous state arrived
+  let renderPlayers = {};           // interpolated player data for rendering
   let camera = { x: 0, y: 0 };
   let mouseAngle = 0;
   let boosting = false;
@@ -358,11 +362,10 @@
     });
 
     socket.on('state', (s) => {
-      // Decode compressed format from server
       if (s.worldW) worldW = s.worldW;
       if (s.worldH) worldH = s.worldH;
 
-      // Decode players: short keys -> full keys, arrays -> objects
+      // Decode players
       const decoded = {};
       for (const [id, p] of Object.entries(s.players)) {
         const segs = p.s.map(seg => Array.isArray(seg) ? { x: seg[0], y: seg[1] } : seg);
@@ -377,7 +380,7 @@
         };
       }
 
-      // Decode food: short keys -> full keys
+      // Decode food
       const decodedFood = s.food.map(f => ({
         x: f.x, y: f.y, color: f.c, value: f.v
       }));
@@ -386,6 +389,11 @@
       const decodedLb = (s.leaderboard || []).map(e => ({
         name: e.n, score: e.sc
       }));
+
+      // Shift: current becomes previous
+      prevState = state;
+      prevStateTime = stateTime;
+      stateTime = performance.now();
 
       state = {
         players: decoded,
@@ -705,7 +713,7 @@
     mmCtx.strokeRect(0, 0, 140, 140);
 
     // players only (skip food on minimap — saves cycles)
-    for (const p of Object.values(state.players)) {
+    for (const p of Object.values(renderPlayers)) {
       if (!p.segments || !p.segments.length) continue;
       const mx = p.segments[0].x / worldW * 140;
       const my = p.segments[0].y / worldH * 140;
@@ -741,44 +749,93 @@
     playerCountEl.textContent = `${count} player${count !== 1 ? 's' : ''} online`;
   }
 
+  // ── Interpolation ─────────────────────────────────────────
+  // Lerp between previous and current server snapshots so movement
+  // looks smooth even though we only get 10 updates/sec from server
+  function lerp(a, b, t) { return a + (b - a) * t; }
+
+  function interpolatePlayers(now) {
+    const duration = stateTime - prevStateTime;
+    // How far we are between prevState and state (0..1, can overshoot)
+    let t = duration > 0 ? (now - stateTime) / duration : 1;
+    t = Math.min(Math.max(t, 0), 1.5); // allow slight overshoot for smoothness
+
+    renderPlayers = {};
+    for (const [id, curr] of Object.entries(state.players)) {
+      const prev = prevState.players && prevState.players[id];
+      if (!prev || !prev.segments || prev.segments.length === 0) {
+        // New player or no previous data — use current position as-is
+        renderPlayers[id] = curr;
+        continue;
+      }
+
+      // Interpolate each segment
+      const segCount = Math.min(prev.segments.length, curr.segments.length);
+      const interpSegs = [];
+      for (let i = 0; i < curr.segments.length; i++) {
+        if (i < prev.segments.length) {
+          interpSegs.push({
+            x: lerp(prev.segments[i].x, curr.segments[i].x, t),
+            y: lerp(prev.segments[i].y, curr.segments[i].y, t)
+          });
+        } else {
+          interpSegs.push(curr.segments[i]);
+        }
+      }
+
+      renderPlayers[id] = {
+        id: curr.id,
+        name: curr.name,
+        segments: interpSegs,
+        score: curr.score,
+        hue: curr.hue,
+        boosting: curr.boosting,
+        lives: curr.lives
+      };
+    }
+  }
+
   // ── Main render loop ─────────────────────────────────────
   let frameCount = 0;
   function render() {
     frameCount++;
+    const now = performance.now();
 
-    // Background (fillRect is faster than clearRect + fillRect)
+    // Interpolate player positions for smooth rendering
+    interpolatePlayers(now);
+
+    // Background
     ctx.fillStyle = '#0a0a1a';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    // Camera follow — own snake or leader when spectating
-    let camTarget = state.players[myId];
+    // Camera follow — use interpolated positions
+    let camTarget = renderPlayers[myId];
     if (!camTarget && spectating) {
-      const ids = Object.keys(state.players);
+      const ids = Object.keys(renderPlayers);
       if (ids.length > 0) {
-        let best = state.players[ids[0]];
+        let best = renderPlayers[ids[0]];
         for (const id of ids) {
-          if (state.players[id].score > best.score) best = state.players[id];
+          if (renderPlayers[id].score > best.score) best = renderPlayers[id];
         }
         camTarget = best;
       }
     }
     if (camTarget && camTarget.segments && camTarget.segments.length > 0) {
-      camera.x += (camTarget.segments[0].x - camera.x) * 0.12;
-      camera.y += (camTarget.segments[0].y - camera.y) * 0.12;
+      camera.x += (camTarget.segments[0].x - camera.x) * 0.15;
+      camera.y += (camTarget.segments[0].y - camera.y) * 0.15;
     }
 
     drawGrid();
     drawBorder();
     drawFood();
 
-    // Draw other snakes first, then me on top
-    for (const p of Object.values(state.players)) {
+    // Draw other snakes first, then me on top — using interpolated data
+    for (const p of Object.values(renderPlayers)) {
       if (p.id !== myId) drawSnake(p, false);
     }
-    if (state.players[myId]) drawSnake(state.players[myId], true);
+    if (renderPlayers[myId]) drawSnake(renderPlayers[myId], true);
 
     drawMinimap();
-    // Update HUD text only every 5th frame (DOM updates are slow)
     if (frameCount % 5 === 0) updateHUD();
 
     requestAnimationFrame(render);
